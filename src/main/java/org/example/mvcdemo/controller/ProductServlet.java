@@ -8,10 +8,10 @@ import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.example.mvcdemo.dto.ProductFormDTO;
+import org.example.mvcdemo.dto.ProductPageDTO;
 import org.example.mvcdemo.dto.ProductSearchDTO;
 import org.example.mvcdemo.exception.BusinessException;
 import org.example.mvcdemo.entity.Product;
-import org.example.mvcdemo.entity.ProductDetail;
 import org.example.mvcdemo.service.CategoryService;
 import org.example.mvcdemo.service.ProductService;
 
@@ -110,11 +110,11 @@ public class ProductServlet extends HttpServlet {
         } catch (BusinessException e) {
             ProductFormDTO form = parseForm(req, true);
             req.setAttribute("error", e.getMessage());
-            showForm(req, resp, toProductView(form), form);
+            showForm(req, resp, productService.toViewProduct(form), form);
         } catch (Exception e) {
             ProductFormDTO form = parseForm(req, true);
             req.setAttribute("error", "Du lieu khong hop le: " + e.getMessage());
-            showForm(req, resp, toProductView(form), form);
+            showForm(req, resp, productService.toViewProduct(form), form);
         }
     }
 
@@ -150,15 +150,8 @@ public class ProductServlet extends HttpServlet {
     private void listProducts(HttpServletRequest req, HttpServletResponse resp)
             throws ServletException, IOException {
         ProductSearchDTO criteria = buildCriteria(req);
-        int totalItems = productService.count(criteria);
-        int totalPages = totalItems == 0
-                ? 1
-                : (int) Math.ceil(totalItems / (double) criteria.getSize());
-        if (criteria.getPage() > totalPages) {
-            criteria.setPage(totalPages);
-        }
-
-        req.setAttribute("products", productService.search(criteria));
+        ProductPageDTO pageData = productService.searchPage(criteria);
+        req.setAttribute("products", pageData.getProducts());
         req.setAttribute("categories", categoryService.findActive());
         req.setAttribute("keyword", criteria.getKeyword());
         req.setAttribute("categoryId", criteria.getCategoryId());
@@ -168,9 +161,9 @@ public class ProductServlet extends HttpServlet {
         req.setAttribute("sortBy", criteria.getSortBy());
         req.setAttribute("sortDir", criteria.getSortDir());
         req.setAttribute("sortOptions", SORT_OPTIONS);
-        req.setAttribute("page", criteria.getPage());
-        req.setAttribute("totalPages", totalPages);
-        req.setAttribute("totalItems", totalItems);
+        req.setAttribute("page", pageData.getPage());
+        req.setAttribute("totalPages", pageData.getTotalPages());
+        req.setAttribute("totalItems", pageData.getTotalItems());
         req.getRequestDispatcher(VIEW_LIST).forward(req, resp);
     }
 
@@ -185,7 +178,7 @@ public class ProductServlet extends HttpServlet {
             return;
         }
         Product product = productService.findById(id);
-        showForm(req, resp, product, toForm(product));
+        showForm(req, resp, product, productService.toForm(product));
     }
 
     private void showDetail(HttpServletRequest req, HttpServletResponse resp)
@@ -226,13 +219,12 @@ public class ProductServlet extends HttpServlet {
 
     private void handleDelete(HttpServletRequest req, HttpServletResponse resp) throws IOException {
         try {
-            int id = Integer.parseInt(req.getParameter("id"));
-            boolean ok = productService.softDelete(id);
-            req.getSession().setAttribute("message",
-                    ok ? "Da xoa mem san pham thanh cong."
-                            : "Khong tim thay san pham de xoa (id khong ton tai hoac da xoa).");
+            productService.softDelete(Integer.parseInt(req.getParameter("id")));
+            req.getSession().setAttribute("message", "Da xoa mem san pham thanh cong.");
         } catch (NumberFormatException e) {
             req.getSession().setAttribute("message", "Id san pham khong hop le.");
+        } catch (BusinessException e) {
+            req.getSession().setAttribute("message", e.getMessage());
         }
         resp.sendRedirect(req.getContextPath() + "/products");
     }
@@ -283,47 +275,6 @@ public class ProductServlet extends HttpServlet {
         f.setOrigin(req.getParameter("origin"));
         f.setDetailDescription(req.getParameter("detailDescription"));
         f.setTechnicalSpec(req.getParameter("technicalSpec"));
-        return f;
-    }
-
-    private Product toProductView(ProductFormDTO f) {
-        Product p = new Product();
-        p.setId(f.getId());
-        p.setSku(f.getSku());
-        p.setName(f.getName());
-        p.setPrice(f.getPrice());
-        p.setQuantity(f.getQuantity() == null ? 0 : f.getQuantity());
-        p.setDescription(f.getDescription());
-        p.setStatus(f.isStatus());
-        p.setCategoryId(f.getCategoryId());
-        ProductDetail d = new ProductDetail();
-        d.setManufacturer(f.getManufacturer());
-        d.setWarrantyMonths(f.getWarrantyMonths() == null ? 0 : f.getWarrantyMonths());
-        d.setOrigin(f.getOrigin());
-        d.setDescription(f.getDetailDescription());
-        d.setTechnicalSpec(f.getTechnicalSpec());
-        p.setDetail(d);
-        return p;
-    }
-
-    private ProductFormDTO toForm(Product p) {
-        ProductFormDTO f = new ProductFormDTO();
-        f.setId(p.getId());
-        f.setSku(p.getSku());
-        f.setName(p.getName());
-        f.setPrice(p.getPrice());
-        f.setQuantity(p.getQuantity());
-        f.setDescription(p.getDescription());
-        f.setStatus(p.isStatus());
-        f.setCategoryId(p.getCategoryId());
-        ProductDetail d = p.getDetail();
-        if (d != null) {
-            f.setManufacturer(d.getManufacturer());
-            f.setWarrantyMonths(d.getWarrantyMonths());
-            f.setOrigin(d.getOrigin());
-            f.setDetailDescription(d.getDescription());
-            f.setTechnicalSpec(d.getTechnicalSpec());
-        }
         return f;
     }
 

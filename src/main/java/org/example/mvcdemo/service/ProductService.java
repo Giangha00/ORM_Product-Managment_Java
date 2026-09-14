@@ -1,6 +1,7 @@
 package org.example.mvcdemo.service;
 
 import org.example.mvcdemo.dto.ProductFormDTO;
+import org.example.mvcdemo.dto.ProductPageDTO;
 import org.example.mvcdemo.dto.ProductSearchDTO;
 import org.example.mvcdemo.exception.BusinessException;
 import org.example.mvcdemo.entity.Category;
@@ -21,12 +22,19 @@ public class ProductService {
     private final ProductRepository productRepository = new ProductRepository();
     private final CategoryRepository categoryRepository = new CategoryRepository();
 
-    public List<Product> search(ProductSearchDTO criteria) {
-        return productRepository.search(criteria);
-    }
-
-    public int count(ProductSearchDTO criteria) {
-        return productRepository.count(criteria);
+    public ProductPageDTO searchPage(ProductSearchDTO criteria) {
+        int totalItems = productRepository.count(criteria);
+        int totalPages = totalItems == 0
+                ? 1
+                : (int) Math.ceil(totalItems / (double) criteria.getSize());
+        if (criteria.getPage() > totalPages) {
+            criteria.setPage(totalPages);
+        }
+        return new ProductPageDTO(
+                productRepository.search(criteria),
+                criteria.getPage(),
+                totalPages,
+                totalItems);
     }
 
     public Product findById(int id) {
@@ -51,8 +59,11 @@ public class ProductService {
         productRepository.update(p);
     }
 
-    public boolean softDelete(int id) {
-        return productRepository.softDelete(id);
+    public void softDelete(int id) {
+        if (!productRepository.softDelete(id)) {
+            throw new BusinessException(
+                    "Khong tim thay san pham de xoa (id khong ton tai hoac da xoa).");
+        }
     }
 
     public List<Category> listCategoriesForForm(Product current) {
@@ -69,6 +80,47 @@ public class ProductService {
             }
         }
         return categories;
+    }
+
+    public ProductFormDTO toForm(Product p) {
+        ProductFormDTO f = new ProductFormDTO();
+        f.setId(p.getId());
+        f.setSku(p.getSku());
+        f.setName(p.getName());
+        f.setPrice(p.getPrice());
+        f.setQuantity(p.getQuantity());
+        f.setDescription(p.getDescription());
+        f.setStatus(p.isStatus());
+        f.setCategoryId(p.getCategoryId());
+        ProductDetail d = p.getDetail();
+        if (d != null) {
+            f.setManufacturer(d.getManufacturer());
+            f.setWarrantyMonths(d.getWarrantyMonths());
+            f.setOrigin(d.getOrigin());
+            f.setDetailDescription(d.getDescription());
+            f.setTechnicalSpec(d.getTechnicalSpec());
+        }
+        return f;
+    }
+
+    public Product toViewProduct(ProductFormDTO f) {
+        Product p = new Product();
+        p.setId(f.getId());
+        p.setSku(f.getSku());
+        p.setName(f.getName());
+        p.setPrice(f.getPrice());
+        p.setQuantity(f.getQuantity() == null ? 0 : f.getQuantity());
+        p.setDescription(f.getDescription());
+        p.setStatus(f.isStatus());
+        p.setCategoryId(f.getCategoryId());
+        ProductDetail d = new ProductDetail();
+        d.setManufacturer(f.getManufacturer());
+        d.setWarrantyMonths(f.getWarrantyMonths() == null ? 0 : f.getWarrantyMonths());
+        d.setOrigin(f.getOrigin());
+        d.setDescription(f.getDetailDescription());
+        d.setTechnicalSpec(f.getTechnicalSpec());
+        p.setDetail(d);
+        return p;
     }
 
     private void validate(ProductFormDTO f, boolean isEdit) {

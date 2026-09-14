@@ -1,9 +1,8 @@
 package org.example.mvcdemo.controller;
 
 import org.example.mvcdemo.entity.User;
-import org.example.mvcdemo.repository.UserRepository;
-import org.example.mvcdemo.util.PasswordUtil;
-import jakarta.servlet.RequestDispatcher;
+import org.example.mvcdemo.exception.BusinessException;
+import org.example.mvcdemo.service.LoginService;
 import jakarta.servlet.ServletConfig;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebInitParam;
@@ -20,8 +19,7 @@ import java.io.IOException;
  * GET  /login  -> hien thi form (forward toi login.jsp)
  * POST /login  -> kiem tra username/password, tao session, redirect toi /products
  *
- * Servlet KHONG chua HTML va KHONG chua SQL: no goi DAO (Model layer) roi chon
- * View (JSP) de forward/redirect toi - dung nguyen tac tach biet cua MVC.
+ * Servlet chi: session, redirect, forward. Doi chieu mat khau o LoginService.
  *
  * ==========================================================================
  * VONG DOI SERVLET (SERVLET LIFECYCLE) - day du 5 giai doan
@@ -50,7 +48,7 @@ import java.io.IOException;
 public class LoginServlet extends HttpServlet {
 
     /** Tai nguyen dung chung - KHOI TAO trong init(), KHONG phai o field. */
-    private UserRepository userRepository;
+    private LoginService loginService;
 
     /** Doc tu &lt;init-param&gt; trong giai doan init(). */
     private int sessionTimeoutMinutes;
@@ -71,9 +69,9 @@ public class LoginServlet extends HttpServlet {
 
     @Override
     public void init() throws ServletException {
-        this.userRepository = new UserRepository();
+        this.loginService = new LoginService();
         this.sessionTimeoutMinutes = Integer.parseInt(getInitParameter("sessionTimeoutMinutes"));
-        log("[LIFECYCLE] (2b) init() - da tao UserRepository, sessionTimeout = "
+        log("[LIFECYCLE] (2b) init() - da tao LoginService, sessionTimeout = "
                 + sessionTimeoutMinutes + " phut, context = " + getServletContext().getContextPath());
     }
 
@@ -104,27 +102,24 @@ public class LoginServlet extends HttpServlet {
         log("[LIFECYCLE] (3b) doPost() - kiem tra thong tin dang nhap");
         String username = req.getParameter("username");
         String password = req.getParameter("password");
-
-        User user = userRepository.findByUsername(username);
-
-        if (user != null && PasswordUtil.matches(password, user.getPassword())) {
+        try {
+            User user = loginService.login(username, password);
             HttpSession session = req.getSession(true);
             session.setAttribute("loggedUser", user);
             session.setMaxInactiveInterval(sessionTimeoutMinutes * 60);
             resp.sendRedirect(req.getContextPath() + "/products");
-        } else {
-            req.setAttribute("error", "Sai ten dang nhap hoac mat khau!");
+        } catch (BusinessException e) {
+            req.setAttribute("error", e.getMessage());
             req.setAttribute("username", username);
-            RequestDispatcher rd = req.getRequestDispatcher("/login.jsp");
-            rd.forward(req, resp);
+            req.getRequestDispatcher("/login.jsp").forward(req, resp);
         }
     }
 
     @Override
     public void destroy() {
         log("[LIFECYCLE] (4) destroy() - da phuc vu tong cong " + requestCount
-                + " request, giai phong UserRepository");
-        this.userRepository = null;
+                + " request, giai phong LoginService");
+        this.loginService = null;
         super.destroy();
     }
 
